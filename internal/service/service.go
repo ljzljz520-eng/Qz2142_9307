@@ -55,7 +55,16 @@ func (s *Service) Archive(id, actor string) (domain.Record, error) {
 	s.Store.SaveAudit(domain.AuditFor(r, actor, "archive"))
 	return r, nil
 }
+
+// Confirm applies a confirm transition to a record. The whole read-modify-write
+// is serialized per record so concurrent confirmers cannot both observe the same
+// Version and then clobber each other's write: each Confirm sees the result of the
+// previous one and increments Version exactly once. The resulting event is keyed
+// by Version (see domain.EventFor), so every confirmation is preserved as its own
+// record rather than overwriting an earlier result on a fixed slot.
 func (s *Service) Confirm(id string) (domain.Record, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	r, e := s.Store.GetRecord(id)
 	if e != nil {
 		return r, e
